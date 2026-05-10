@@ -319,14 +319,40 @@ def call_llm(prompt: str) -> str:
         return f"Error: {str(e)}"
 
 def extract_pdf_text(uploaded_file) -> str:
-    """Extract plain text from an uploaded PDF using pypdf."""
+    import io
+    file_bytes = uploaded_file.read()
+
     try:
-        import pypdf, io
-        reader = pypdf.PdfReader(io.BytesIO(uploaded_file.read()))
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            pages = [page.extract_text() or "" for page in pdf.pages]
+        text = "\n\n".join(pages).strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    try:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        pages  = [reader.pages[i].extract_text() or "" for i in range(len(reader.pages))]
+        text   = "\n\n".join(pages).strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
         pages  = [page.extract_text() or "" for page in reader.pages]
-        return "\n\n".join(pages)
-    except Exception as e:
-        return f"ERROR_READING_PDF: {str(e)}"
+        text   = "\n\n".join(pages).strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    return "ERROR_READING_PDF: No PDF library found. Run: pip install pdfplumber"
 
 def generate_followups(topic: str, report: str) -> list:
     prompt = (
