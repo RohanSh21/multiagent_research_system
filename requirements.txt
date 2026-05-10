@@ -18,3 +18,7 @@ aiohttp>=3.9.0
 pandas>=2.0.0
 tiktoken>=0.6.0
 rich>=13.7.0
+
+pdfplumber
+PyPDF2
+pypdf
