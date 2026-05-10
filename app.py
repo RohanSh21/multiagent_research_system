@@ -415,6 +415,29 @@ with st.sidebar:
     )
 
 # ════════════════════════════════════════════════════════════════════════════════
+# ── TOP MODE SWITCHER (always visible, mobile friendly) ────────────────────────
+_c1, _c2, _c3 = st.columns([1, 2, 1])
+with _c2:
+    _t1, _t2 = st.columns(2, gap="small")
+    with _t1:
+        if st.button(
+            "🔍 Research",
+            use_container_width=True,
+            type="primary" if st.session_state.active_mode == "research" else "secondary",
+            key="top_research",
+        ):
+            st.session_state.active_mode = "research"
+            st.rerun()
+    with _t2:
+        if st.button(
+            "📄 PDF Chat",
+            use_container_width=True,
+            type="primary" if st.session_state.active_mode == "rag" else "secondary",
+            key="top_rag",
+        ):
+            st.session_state.active_mode = "rag"
+            st.rerun()
+
 # ── RAG MODE ────────────────────────────────────────────────────────────────────
 # ════════════════════════════════════════════════════════════════════════════════
 if st.session_state.active_mode == "rag":
