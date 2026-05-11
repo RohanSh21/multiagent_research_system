@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import os
 from pipeline import run_research_pipeline
+from voice_input import render_voice_input, inject_voice_listener
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -10,6 +11,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ── Inject voice JS listener ────────────────────────────────────────────────────
+inject_voice_listener()
 
 # ── Custom CSS ──────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -626,6 +630,7 @@ with col_input:
         label="topic",
         placeholder="e.g.  Quantum computing breakthroughs in 2025…",
         label_visibility="collapsed",
+        value=st.session_state.get("voice_topic", ""),
     )
 with col_run:
     run_btn = st.button("▶ Run", use_container_width=True)
@@ -635,6 +640,23 @@ with col_regen:
         use_container_width=True,
         disabled=(st.session_state.result is None),
     )
+
+# ── Voice input row ──────────────────────────────────────────────────────────────
+voice_col, hint_col = st.columns([3, 3], gap="small")
+with voice_col:
+    spoken = render_voice_input()
+    if spoken and spoken.strip():
+        st.session_state["voice_topic"] = spoken.strip()
+        st.rerun()
+with hint_col:
+    st.markdown(
+        "🎤 **Voice Input** — Click the mic, speak your topic, then click **Use ➤** to auto-fill.",
+        unsafe_allow_html=False,
+    )
+
+# Clear voice_topic after it has been used to fill the box
+if st.session_state.get("voice_topic") and topic == st.session_state.get("voice_topic"):
+    st.session_state["voice_topic"] = ""
 
 st.markdown("")
 
