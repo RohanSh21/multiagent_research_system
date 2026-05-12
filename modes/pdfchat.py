@@ -1,17 +1,13 @@
 import streamlit as st
-import os
+from components.model_selector import get_llm
 
 
 # ── LLM helper ─────────────────────────────────────────────────────────────────
 def call_llm(prompt: str) -> str:
     try:
-        from langchain_mistralai import ChatMistralAI
-        llm = ChatMistralAI(
-            model="mistral-small-latest",
-            api_key=os.getenv("MISTRAL_API_KEY"),
-            temperature=0.4,
-        )
-        return llm.invoke(prompt).content
+        llm    = get_llm(temperature=0.4)
+        result = llm.invoke(prompt)
+        return result.content if hasattr(result, "content") else str(result)
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -73,6 +69,14 @@ def render_pdf_mode():
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # Model indicator
+    model_label = st.session_state.get("selected_model_label", "⚡ Balanced — Mistral 7B")
+    st.markdown(
+        f'<div style="font-family:\'DM Mono\',monospace;font-size:0.72rem;'
+        f'color:#6b7280;margin-bottom:1rem;">🤖 Using: {model_label}</div>',
+        unsafe_allow_html=True,
+    )
 
     # Upload zone
     uploaded = st.file_uploader(
@@ -166,7 +170,7 @@ def render_pdf_mode():
         with rag_col:
             rag_q = st.text_input(
                 label="rag_chat",
-                placeholder="e.g. What methodology was used? / List all recommendations / Who are the authors?",
+                placeholder="e.g. What methodology was used? / List all recommendations?",
                 label_visibility="collapsed",
                 key="rag_input",
             )

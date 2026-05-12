@@ -1,20 +1,17 @@
 import streamlit as st
 import time
-import os
 from agents import build_search_agent, build_reader_agent, writer_chain, critic_chain
 from components.voice_input import render_voice_input
+from components.model_selector import get_llm
 
 
 # ── LLM helper ─────────────────────────────────────────────────────────────────
 def call_llm(prompt: str) -> str:
     try:
-        from langchain_mistralai import ChatMistralAI
-        llm = ChatMistralAI(
-            model="mistral-small-latest",
-            api_key=os.getenv("MISTRAL_API_KEY"),
-            temperature=0.4,
-        )
-        return llm.invoke(prompt).content
+        llm    = get_llm(temperature=0.4)
+        result = llm.invoke(prompt)
+        # Handle both string and message object responses
+        return result.content if hasattr(result, "content") else str(result)
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -80,6 +77,11 @@ def run_pipeline(topic_str: str):
     status   = st.empty()
     done: set = set()
     start = time.time()
+
+    # Show which model is being used
+    model_label = st.session_state.get("selected_model_label", "⚡ Balanced — Mistral 7B")
+    status.info(f"🤖 Using: {model_label}")
+    time.sleep(0.5)
 
     try:
         with step_ph.container(): render_steps(0, done)
@@ -163,6 +165,7 @@ def render_results():
 
     # Metrics
     elapsed = st.session_state.elapsed
+    model_label = st.session_state.get("selected_model_label", "⚡ Balanced — Mistral 7B")
     st.markdown(f"""
     <div class="metric-row">
         <div class="metric-chip">
@@ -182,6 +185,8 @@ def render_results():
             <div class="metric-label">Report Words</div>
         </div>
     </div>
+    <div style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#6b7280;
+                margin-bottom:1rem;">🤖 Generated with: {model_label}</div>
     """, unsafe_allow_html=True)
 
     # Tabs
@@ -206,9 +211,9 @@ def render_results():
                             this.innerText='✅ Copied!';
                             setTimeout(()=>this.innerText='📋 Copy',2000)"
                 style="background:linear-gradient(135deg,#4fffb0,#38bdf8);color:#0a0b0f;
-                       border:none;border-radius:10px;font-family:Syne,sans-serif;
-                       font-weight:700;font-size:0.9rem;padding:0.55rem 1.4rem;
-                       cursor:pointer;width:100%;margin-top:0.3rem;">
+                    border:none;border-radius:10px;font-family:Syne,sans-serif;
+                    font-weight:700;font-size:0.9rem;padding:0.55rem 1.4rem;
+                    cursor:pointer;width:100%;margin-top:0.3rem;">
                 📋 Copy
             </button>""", unsafe_allow_html=True)
 

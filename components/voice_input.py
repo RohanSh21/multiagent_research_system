@@ -298,5 +298,5 @@ def render_voice_input() -> None:
     </html>
     """
 
-    # ── Use st.iframe instead of deprecated components.html ─────────────────
+    # ── Use st.iframe instead of deprecated components.html ───────────
     st.iframe(voice_html, height=75)
