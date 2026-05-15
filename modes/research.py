@@ -1,17 +1,21 @@
 import streamlit as st
 import time
-from agents import build_search_agent, build_reader_agent, writer_chain, critic_chain
-from components.voice_input import render_voice_input
-from components.model_selector import get_llm
+import os
+from components.voice_input import render_voice_input, inject_voice_listener
+from auth.auth_logic import save_research
+from auth.supabase_client import init_supabase
 
 
-# ── LLM helper ─────────────────────────────────────────────────────────────────
+# ── LLM helper (original, untouched) ───────────────────────────────────────────
 def call_llm(prompt: str) -> str:
     try:
-        llm    = get_llm(temperature=0.4)
-        result = llm.invoke(prompt)
-        # Handle both string and message object responses
-        return result.content if hasattr(result, "content") else str(result)
+        from langchain_mistralai import ChatMistralAI
+        llm = ChatMistralAI(
+            model="mistral-small-latest",
+            api_key=os.getenv("MISTRAL_API_KEY"),
+            temperature=0.4,
+        )
+        return llm.invoke(prompt).content
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -27,7 +31,7 @@ def generate_followups(topic: str, report: str) -> list:
     return [q.strip() for q in raw.strip().split("\n") if q.strip()][:3]
 
 
-# ── Pipeline step renderer ──────────────────────────────────────────────────────
+# ── Pipeline step renderer (original, untouched) ────────────────────────────────
 STEPS = [
     ("🔍", "Search Agent",  "Discovering sources across the web",  "STEP 01"),
     ("📄", "Reader Agent",  "Scraping top URLs for deep content",  "STEP 02"),
@@ -58,16 +62,18 @@ def render_steps(active: int, done_set: set, error: int = -1):
                     </div>
                     <span class="badge {bc}">{bt}</span>
                 </div>
-                <div style="font-size:0.78rem;color:var(--muted);margin-top:0.4rem;line-height:1.4;">{desc}</div>
+                <div style="font-size:0.78rem;color:var(--muted);
+                            margin-top:0.4rem;line-height:1.4;">{desc}</div>
             </div>""", unsafe_allow_html=True)
 
 
-# ── Core pipeline runner ────────────────────────────────────────────────────────
+# ── Pipeline runner (original + save to Supabase) ───────────────────────────────
 def run_pipeline(topic_str: str):
     st.session_state.result        = None
     st.session_state.followups     = []
     st.session_state.chat_messages = []
     st.session_state.running       = True
+    st.session_state.active_thread = None
 
     if topic_str not in st.session_state.history:
         st.session_state.history.append(topic_str)
@@ -78,21 +84,18 @@ def run_pipeline(topic_str: str):
     done: set = set()
     start = time.time()
 
-    # Show which model is being used
-    model_label = st.session_state.get("selected_model_label", "⚡ Balanced — Mistral 7B")
-    status.info(f"🤖 Using: {model_label}")
-    time.sleep(0.5)
-
     try:
         with step_ph.container(): render_steps(0, done)
         status.info("🔍  Search Agent is querying the web…")
         prog_bar.progress(10)
 
+        from agents import build_search_agent, build_reader_agent, writer_chain, critic_chain
         state = {}
 
         # Step 1 – Search
         sa = build_search_agent()
-        sr = sa.invoke({"messages": [("user", f"find recent, reliable and detailed information about: {topic_str}")]})
+        sr = sa.invoke({"messages": [("user",
+            f"find recent, reliable and detailed information about: {topic_str}")]})
         state["search_results"] = sr["messages"][-1].content
         done.add(0)
 
@@ -114,10 +117,8 @@ def run_pipeline(topic_str: str):
         prog_bar.progress(60)
 
         # Step 3 – Writer
-        combined = (
-            f"SEARCH RESULTS:\n{state['search_results']}\n\n"
-            f"DETAILED SCRAPED CONTENT:\n{state['scraped_content']}"
-        )
+        combined = (f"SEARCH RESULTS:\n{state['search_results']}\n\n"
+                    f"DETAILED SCRAPED CONTENT:\n{state['scraped_content']}")
         state["report"] = writer_chain.invoke({"topic": topic_str, "research": combined})
         done.add(2)
 
@@ -137,9 +138,28 @@ def run_pipeline(topic_str: str):
         with step_ph.container(): render_steps(-1, done)
         prog_bar.progress(100)
         status.info("💡  Generating follow-up suggestions…")
-
         st.session_state.followups = generate_followups(topic_str, str(state["report"]))
-        status.success(f"✅  Research complete in {elapsed:.1f}s — ready to explore!")
+
+        # Save to Supabase
+        user = st.session_state.get("user")
+        if user:
+            save_research(
+                user_id        = user["id"],
+                topic          = topic_str,
+                report         = str(state["report"]),
+                search_results = str(state["search_results"]),
+                feedback       = str(state["feedback"]),
+            )
+            supabase   = init_supabase()
+            new_thread = supabase.table("research_history").select(
+                "id, topic, title, report, search_results, feedback, created_at"
+            ).eq("user_id", user["id"]).order("created_at", desc=True).limit(1).execute()
+            if new_thread.data:
+                st.session_state["threads"] = (
+                    new_thread.data + st.session_state.get("threads", [])
+                )
+
+        status.success(f"✅  Research complete in {elapsed:.1f}s — saved to your history!")
 
     except Exception as exc:
         with step_ph.container(): render_steps(-1, done, -1)
@@ -149,7 +169,7 @@ def run_pipeline(topic_str: str):
     st.session_state.running = False
 
 
-# ── Results renderer ────────────────────────────────────────────────────────────
+# ── Results renderer (original, untouched) ──────────────────────────────────────
 def render_results():
     result = st.session_state.result
     if not result:
@@ -165,7 +185,6 @@ def render_results():
 
     # Metrics
     elapsed = st.session_state.elapsed
-    model_label = st.session_state.get("selected_model_label", "⚡ Balanced — Mistral 7B")
     st.markdown(f"""
     <div class="metric-row">
         <div class="metric-chip">
@@ -185,8 +204,6 @@ def render_results():
             <div class="metric-label">Report Words</div>
         </div>
     </div>
-    <div style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#6b7280;
-                margin-bottom:1rem;">🤖 Generated with: {model_label}</div>
     """, unsafe_allow_html=True)
 
     # Tabs
@@ -210,10 +227,9 @@ def render_results():
             <button onclick="navigator.clipboard.writeText(`{safe_report}`);
                             this.innerText='✅ Copied!';
                             setTimeout(()=>this.innerText='📋 Copy',2000)"
-                style="background:linear-gradient(135deg,#4fffb0,#38bdf8);color:#0a0b0f;
-                    border:none;border-radius:10px;font-family:Syne,sans-serif;
-                    font-weight:700;font-size:0.9rem;padding:0.55rem 1.4rem;
-                    cursor:pointer;width:100%;margin-top:0.3rem;">
+                style="background:#18a689;border:none;border-radius:10px;
+                       font-family:Syne,sans-serif;font-weight:700;font-size:0.9rem;
+                       padding:0.55rem 1.4rem;cursor:pointer;width:100%;margin-top:0.3rem;">
                 📋 Copy
             </button>""", unsafe_allow_html=True)
 
@@ -226,7 +242,7 @@ def render_results():
     with tab_critic:
         st.markdown(f'<div class="content-box">{feedback_text}</div>', unsafe_allow_html=True)
 
-    # ── Suggested Follow-ups ──────────────────────────────────────────────────
+    # Follow-ups
     st.markdown("---")
     st.markdown("""
     <div class="section-title">💡 Suggested Follow-ups</div>
@@ -254,7 +270,7 @@ def render_results():
             unsafe_allow_html=True,
         )
 
-    # ── Follow-up Chat ────────────────────────────────────────────────────────
+    # Follow-up Chat
     st.markdown("---")
     st.markdown("""
     <div class="section-title">💬 Ask About This Report</div>
@@ -295,7 +311,8 @@ def render_results():
     if send_btn and user_q.strip():
         st.session_state.chat_messages.append({"role": "user", "content": user_q.strip()})
         history_ctx = "\n".join(
-            [f"{m['role'].upper()}: {m['content']}" for m in st.session_state.chat_messages[-6:]]
+            [f"{m['role'].upper()}: {m['content']}"
+             for m in st.session_state.chat_messages[-6:]]
         )
         with st.spinner("Thinking…"):
             answer = call_llm(
@@ -312,21 +329,25 @@ def render_results():
             st.session_state.chat_messages = []
             st.rerun()
 
-    # Raw JSON
     with st.expander("🗂 Raw pipeline state (JSON)"):
-        safe = {k: str(v)[:2000] + ("…" if len(str(v)) > 2000 else "") for k, v in result.items()}
+        safe = {
+            k: str(v)[:2000] + ("…" if len(str(v)) > 2000 else "")
+            for k, v in result.items()
+        }
         st.json(safe)
 
 
 # ── Main research mode renderer ─────────────────────────────────────────────────
 def render_research_mode():
-    """Main entry point — renders the full research mode UI."""
+    """Main entry point called from app.py."""
+
+    inject_voice_listener()
 
     # Hero
     st.markdown("""
     <div class="hero">
         <div class="hero-label">Multi-Agent Research System</div>
-        <h1>ResearchMind AI</h1>
+        <h1>DEEPDIVE AI</h1>
         <p class="hero-sub">
             Four specialised AI agents work in sequence — searching, scraping,
             writing and critiquing — to deliver deep research reports in seconds.
@@ -352,23 +373,25 @@ def render_research_mode():
             disabled=(st.session_state.result is None),
         )
 
-    # Voice input row
+    # Voice row
     voice_col, hint_col = st.columns([3, 3], gap="small")
     with voice_col:
         render_voice_input()
     with hint_col:
         st.markdown(
-            "🎤 **Voice Input** — Click the mic, speak your topic, then click **Use ➤** to auto-fill.",
+            "🎤 **Voice Input** — Click the mic, speak your topic, "
+            "then click **Use ➤** to auto-fill."
         )
 
-    # Clear voice_topic after use
-    if st.session_state.get("voice_topic") and topic == st.session_state.get("voice_topic"):
+    if st.session_state.get("voice_topic") and \
+       topic == st.session_state.get("voice_topic"):
         st.session_state["voice_topic"] = ""
 
     st.markdown("")
 
     # Idle step grid
-    if not st.session_state.running and st.session_state.result is None and not run_btn:
+    if not st.session_state.running and \
+       st.session_state.result is None and not run_btn:
         render_steps(-1, set())
 
     # Trigger pipeline
