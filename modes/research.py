@@ -31,7 +31,7 @@ def generate_followups(topic: str, report: str) -> list:
     return [q.strip() for q in raw.strip().split("\n") if q.strip()][:3]
 
 
-# ── Pipeline step renderer (original, untouched) ────────────────────────────────
+# ── Pipeline steps (original logic, updated card UI) ────────────────────────────
 STEPS = [
     ("🔍", "Search Agent",  "Discovering sources across the web",  "STEP 01"),
     ("📄", "Reader Agent",  "Scraping top URLs for deep content",  "STEP 02"),
@@ -44,13 +44,13 @@ def render_steps(active: int, done_set: set, error: int = -1):
     cols = st.columns(4, gap="small")
     for i, (icon, title, desc, label) in enumerate(STEPS):
         if i in done_set:
-            cls, bc, bt = "done",    "badge-done",    "✓ DONE"
+            cls, bc, bt = "done",    "badge-done",    "✓ Done"
         elif i == active:
-            cls, bc, bt = "active",  "badge-active",  "● RUNNING"
+            cls, bc, bt = "active",  "badge-active",  "● Running"
         elif i == error:
-            cls, bc, bt = "error",   "badge-error",   "✗ ERROR"
+            cls, bc, bt = "error",   "badge-error",   "✗ Error"
         else:
-            cls, bc, bt = "waiting", "badge-waiting", "○ WAITING"
+            cls, bc, bt = "waiting", "badge-waiting", "○ Waiting"
         with cols[i]:
             st.markdown(f"""
             <div class="step-card {cls}">
@@ -62,12 +62,12 @@ def render_steps(active: int, done_set: set, error: int = -1):
                     </div>
                     <span class="badge {bc}">{bt}</span>
                 </div>
-                <div style="font-size:0.78rem;color:var(--muted);
-                            margin-top:0.4rem;line-height:1.4;">{desc}</div>
+                <div style="font-size:0.76rem;color:var(--text3);
+                            margin-top:0.5rem;line-height:1.5;">{desc}</div>
             </div>""", unsafe_allow_html=True)
 
 
-# ── Pipeline runner (original + save to Supabase) ───────────────────────────────
+# ── Pipeline runner (original logic + save to Supabase for logged-in users) ─────
 def run_pipeline(topic_str: str):
     st.session_state.result        = None
     st.session_state.followups     = []
@@ -140,9 +140,10 @@ def run_pipeline(topic_str: str):
         status.info("💡  Generating follow-up suggestions…")
         st.session_state.followups = generate_followups(topic_str, str(state["report"]))
 
-        # Save to Supabase
-        user = st.session_state.get("user")
-        if user:
+        # Save to Supabase only for logged-in users (not guests)
+        user     = st.session_state.get("user")
+        is_guest = st.session_state.get("is_guest", False)
+        if user and not is_guest:
             save_research(
                 user_id        = user["id"],
                 topic          = topic_str,
@@ -158,8 +159,9 @@ def run_pipeline(topic_str: str):
                 st.session_state["threads"] = (
                     new_thread.data + st.session_state.get("threads", [])
                 )
-
-        status.success(f"✅  Research complete in {elapsed:.1f}s — saved to your history!")
+            status.success(f"✅  Research complete in {elapsed:.1f}s — saved to history!")
+        else:
+            status.success(f"✅  Research complete in {elapsed:.1f}s!")
 
     except Exception as exc:
         with step_ph.container(): render_steps(-1, done, -1)
@@ -169,7 +171,7 @@ def run_pipeline(topic_str: str):
     st.session_state.running = False
 
 
-# ── Results renderer (original, untouched) ──────────────────────────────────────
+# ── Results renderer (original logic, updated UI) ───────────────────────────────
 def render_results():
     result = st.session_state.result
     if not result:
@@ -226,11 +228,12 @@ def render_results():
             st.markdown(f"""
             <button onclick="navigator.clipboard.writeText(`{safe_report}`);
                             this.innerText='✅ Copied!';
-                            setTimeout(()=>this.innerText='📋 Copy',2000)"
-                style="background:#18a689;border:none;border-radius:10px;
-                       font-family:Syne,sans-serif;font-weight:700;font-size:0.9rem;
-                       padding:0.55rem 1.4rem;cursor:pointer;width:100%;margin-top:0.3rem;">
-                📋 Copy
+                            setTimeout(()=>this.innerText='Copy',2000)"
+                style="background:#1e1e1e;color:#ececec;border:1px solid #333;
+                    border-radius:10px;font-family:Inter,sans-serif;font-weight:500;
+                    font-size:0.85rem;padding:0.5rem 1.2rem;cursor:pointer;
+                    width:100%;margin-top:0.3rem;transition:all 0.15s;">
+                Copy
             </button>""", unsafe_allow_html=True)
 
     with tab_search:
@@ -245,7 +248,7 @@ def render_results():
     # Follow-ups
     st.markdown("---")
     st.markdown("""
-    <div class="section-title">💡 Suggested Follow-ups</div>
+    <div class="section-title">Suggested follow-ups</div>
     <div class="section-sub">Click any question to get an instant answer</div>
     """, unsafe_allow_html=True)
 
@@ -264,17 +267,12 @@ def render_results():
                         )
                     st.session_state.chat_messages.append({"role": "ai", "content": answer})
                     st.rerun()
-    else:
-        st.markdown(
-            '<p style="color:var(--muted);font-size:0.85rem;">No suggestions generated yet.</p>',
-            unsafe_allow_html=True,
-        )
 
     # Follow-up Chat
     st.markdown("---")
     st.markdown("""
-    <div class="section-title">💬 Ask About This Report</div>
-    <div class="section-sub">Summarise, explain, compare, or go deeper — just like ChatGPT</div>
+    <div class="section-title">Ask about this report</div>
+    <div class="section-sub">Summarise, explain, compare, or go deeper</div>
     """, unsafe_allow_html=True)
 
     if st.session_state.chat_messages:
@@ -283,14 +281,14 @@ def render_results():
             if msg["role"] == "user":
                 chat_html += (
                     f'<div class="chat-msg">'
-                    f'<div class="chat-label">YOU</div>'
+                    f'<div class="chat-label">You</div>'
                     f'<div class="chat-msg-user">{msg["content"]}</div>'
                     f'</div>'
                 )
             else:
                 chat_html += (
                     f'<div class="chat-msg">'
-                    f'<div class="chat-label">RESEARCHMIND</div>'
+                    f'<div class="chat-label">ResearchMind</div>'
                     f'<div class="chat-msg-ai">{msg["content"]}</div>'
                     f'</div>'
                 )
@@ -301,12 +299,12 @@ def render_results():
     with chat_col:
         user_q = st.text_input(
             label="chat",
-            placeholder="e.g. Summarise in 5 bullets… / What does this mean for India?",
+            placeholder="Ask anything about this report…",
             label_visibility="collapsed",
             key="chat_input",
         )
     with send_col:
-        send_btn = st.button("Send ➤", use_container_width=True)
+        send_btn = st.button("Send", use_container_width=True)
 
     if send_btn and user_q.strip():
         st.session_state.chat_messages.append({"role": "user", "content": user_q.strip()})
@@ -325,11 +323,11 @@ def render_results():
         st.rerun()
 
     if st.session_state.chat_messages:
-        if st.button("🗑 Clear Chat", key="clear_chat"):
+        if st.button("Clear chat", key="clear_chat"):
             st.session_state.chat_messages = []
             st.rerun()
 
-    with st.expander("🗂 Raw pipeline state (JSON)"):
+    with st.expander("Raw pipeline output"):
         safe = {
             k: str(v)[:2000] + ("…" if len(str(v)) > 2000 else "")
             for k, v in result.items()
@@ -337,20 +335,29 @@ def render_results():
         st.json(safe)
 
 
-# ── Main research mode renderer ─────────────────────────────────────────────────
+# ── Main entry point ─────────────────────────────────────────────────────────────
 def render_research_mode():
-    """Main entry point called from app.py."""
-
     inject_voice_listener()
+
+    is_guest = st.session_state.get("is_guest", False)
+
+    # Guest banner on main page
+    if is_guest:
+        st.markdown("""
+        <div class="guest-banner">
+            ⚡ You're in guest mode — research won't be saved.
+            Sign in for full access.
+        </div>
+        """, unsafe_allow_html=True)
 
     # Hero
     st.markdown("""
     <div class="hero">
-        <div class="hero-label">Multi-Agent Research System</div>
-        <h1>DEEPDIVE AI</h1>
+        <div class="hero-badge">⚡ Multi-Agent Research System</div>
+        <h1>Research anything,<br><span>instantly.</span></h1>
         <p class="hero-sub">
-            Four specialised AI agents work in sequence — searching, scraping,
-            writing and critiquing — to deliver deep research reports in seconds.
+            Four AI agents search, scrape, write, and critique —
+            delivering deep research reports in seconds.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -360,15 +367,15 @@ def render_research_mode():
     with col_input:
         topic = st.text_input(
             label="topic",
-            placeholder="e.g.  Quantum computing breakthroughs in 2025…",
+            placeholder="What do you want to research?",
             label_visibility="collapsed",
             value=st.session_state.get("voice_topic", ""),
         )
     with col_run:
-        run_btn = st.button("▶ Run", use_container_width=True)
+        run_btn = st.button("▶ Run", use_container_width=True, type="primary")
     with col_regen:
         regen_btn = st.button(
-            "🔄 Redo",
+            "↺ Redo",
             use_container_width=True,
             disabled=(st.session_state.result is None),
         )
@@ -379,8 +386,8 @@ def render_research_mode():
         render_voice_input()
     with hint_col:
         st.markdown(
-            "🎤 **Voice Input** — Click the mic, speak your topic, "
-            "then click **Use ➤** to auto-fill."
+            '<span style="font-size:0.82rem;color:#555;">🎤 Click mic → speak → click Use ➤</span>',
+            unsafe_allow_html=True,
         )
 
     if st.session_state.get("voice_topic") and \
@@ -394,14 +401,13 @@ def render_research_mode():
        st.session_state.result is None and not run_btn:
         render_steps(-1, set())
 
-    # Trigger pipeline
+    # Trigger
     if run_btn and topic.strip():
         run_pipeline(topic.strip())
     elif run_btn and not topic.strip():
-        st.warning("Please enter a research topic before running.")
+        st.warning("Please enter a research topic.")
 
     if regen_btn and st.session_state.last_topic:
         run_pipeline(st.session_state.last_topic)
 
-    # Show results
     render_results()
