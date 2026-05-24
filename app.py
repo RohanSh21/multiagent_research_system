@@ -68,8 +68,8 @@ else:
 # ════════════════════════════════════════════════════════════════════════════════
 with left_col:
     if sidebar_open:
-        from components.sidebar import render_custom_sidebar
-        render_custom_sidebar()
+        from components.sidebar import render_sidebar   # FIX: was render_custom_sidebar
+        render_sidebar()                                # FIX: was render_custom_sidebar()
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MAIN CONTENT
@@ -89,7 +89,7 @@ with main_col:
     with t2:
         if st.button(
             "🔍 Research", use_container_width=True,
-            type="primary" if st.session_state.active_mode == "research" else "secondary",
+            type="primary" if st.session_state.get("active_mode") == "research" else "secondary",
             key="top_research",
         ):
             st.session_state.active_mode = "research"
@@ -98,7 +98,7 @@ with main_col:
     with t3:
         if st.button(
             "📄 PDF Chat", use_container_width=True,
-            type="primary" if st.session_state.active_mode == "rag" else "secondary",
+            type="primary" if st.session_state.get("active_mode") == "rag" else "secondary",
             key="top_rag",
         ):
             st.session_state.active_mode = "rag"
@@ -107,7 +107,7 @@ with main_col:
     st.markdown("---")
 
     # ── Route ─────────────────────────────────────────────────────────────────
-    if st.session_state.active_mode == "rag":
+    if st.session_state.get("active_mode") == "rag":
         render_pdf_mode()
     else:
         render_research_mode()
