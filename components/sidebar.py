@@ -24,14 +24,19 @@ def _group_threads(threads: list) -> dict:
 
 
 def render_sidebar() -> None:
-    # FIX: removed "with st.sidebar:" — content now renders in whatever
-    # column/container this function is called from (the custom left panel).
+    """
+    Renders sidebar content into whatever container calls this function.
+    On desktop this is the left column; on mobile/tablet it's injected into
+    the fixed .rm-sidebar drawer via app.py's HTML scaffold.
+    """
 
-    # ── Brand ─────────────────────────────────────────────────────────
-    st.markdown(
-        '<div class="sidebar-brand">🧠 ResearchMind</div>',
-        unsafe_allow_html=True,
-    )
+    # ── Brand + mobile close button ────────────────────────────────────
+    st.markdown("""
+        <div class="sidebar-brand">
+            🧠 ResearchMind
+            <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close">✕</button>
+        </div>
+    """, unsafe_allow_html=True)
 
     # ── User info + logout ─────────────────────────────────────────────
     is_guest  = st.session_state.get("is_guest", False)
