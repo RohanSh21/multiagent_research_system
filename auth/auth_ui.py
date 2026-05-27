@@ -4,48 +4,51 @@ from auth.supabase_client import get_google_oauth_url, get_user_from_code, get_t
 
 
 def _handle_oauth_callback():
-    """
-    Handle OAuth callback from Google.
-    Supabase sends ?code=... as a query parameter after auth.
-    """
+    """Handle OAuth callback — reads ?code= from URL."""
     try:
         params = st.query_params
         code   = params.get("code")
+        error  = params.get("error")
+
+        if error:
+            st.error(f"Google sign-in error: {error}")
+            st.query_params.clear()
+            return
 
         if code:
-            with st.spinner("Signing you in with Google…"):
+            with st.spinner("Completing Google sign-in…"):
                 user = get_user_from_code(code)
+
+            # Clear code from URL immediately
+            st.query_params.clear()
 
             if user:
                 threads = get_threads_for_user(user["id"])
-
-                st.session_state["authenticated"] = True
-                st.session_state["user"]          = user
-                st.session_state["is_guest"]      = False
-                st.session_state["threads"]       = threads
-                st.session_state["active_thread"] = None
-                st.session_state["result"]        = None
-                st.session_state["chat_messages"] = []
-                st.session_state["history"]       = [
-                    t.get("topic", "") for t in threads
-                ]
-                # Clear the code from URL
-                st.query_params.clear()
+                st.session_state.update({
+                    "authenticated": True,
+                    "user":          user,
+                    "is_guest":      False,
+                    "threads":       threads,
+                    "active_thread": None,
+                    "result":        None,
+                    "chat_messages": [],
+                    "history":       [t.get("topic", "") for t in threads],
+                })
                 st.rerun()
             else:
-                st.error("Google sign-in failed. Please try again.")
-                st.query_params.clear()
+                st.error("Google sign-in failed. Please try email/password login instead.")
+
     except Exception as e:
-        pass
+        print(f"OAuth callback error: {e}")
 
 
 def render_auth_page():
-    """Renders login/signup page with Google OAuth + guest mode."""
+    """Renders the full auth page."""
 
-    # Handle OAuth callback first
+    # Handle callback first — before rendering anything
     _handle_oauth_callback()
 
-    # If already authenticated after callback, stop
+    # If authenticated after callback handling, stop
     if st.session_state.get("authenticated"):
         return
 
@@ -54,7 +57,7 @@ def render_auth_page():
     with col:
         st.markdown("<div style='padding:3rem 0 1rem;'>", unsafe_allow_html=True)
 
-        # Logo
+        # ── Logo ───────────────────────────────────────────────────────────
         st.markdown("""
         <div class="auth-logo">
             <div class="auth-logo-icon">🧠</div>
@@ -64,7 +67,11 @@ def render_auth_page():
         """, unsafe_allow_html=True)
 
         # ── Google Sign In ─────────────────────────────────────────────────
-        google_url = get_google_oauth_url()
+        try:
+            google_url = get_google_oauth_url()
+        except Exception:
+            google_url = None
+
         if google_url:
             st.markdown(f"""
             <a href="{google_url}" target="_self" style="text-decoration:none;display:block;margin-bottom:1rem;">
@@ -72,10 +79,9 @@ def render_auth_page():
                     display:flex;align-items:center;justify-content:center;gap:12px;
                     background:#ffffff;color:#1f1f1f;
                     border:1px solid #dadce0;border-radius:12px;
-                    padding:0.75rem 1rem;
-                    font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:500;
-                    cursor:pointer;width:100%;box-sizing:border-box;
-                    transition:background 0.15s;
+                    padding:0.8rem 1rem;font-family:'Inter',sans-serif;
+                    font-size:0.95rem;font-weight:500;cursor:pointer;
+                    width:100%;box-sizing:border-box;
                 ">
                     <svg width="20" height="20" viewBox="0 0 48 48">
                         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -88,13 +94,15 @@ def render_auth_page():
             </a>
             """, unsafe_allow_html=True)
         else:
-            st.warning("Google Sign-In unavailable. Use email below.")
+            st.info("Google Sign-In is not configured. Please use email/password.")
 
         # ── Divider ────────────────────────────────────────────────────────
-        st.markdown('<div class="auth-divider">or continue with email</div>',
-                    unsafe_allow_html=True)
+        st.markdown(
+            '<div class="auth-divider">or continue with email</div>',
+            unsafe_allow_html=True,
+        )
 
-        # ── Email tabs ─────────────────────────────────────────────────────
+        # ── Email/Password tabs ────────────────────────────────────────────
         auth_mode = st.radio(
             label="auth_mode",
             options=["Login", "Sign Up"],
@@ -102,8 +110,6 @@ def render_auth_page():
             label_visibility="collapsed",
             key="auth_tab",
         )
-
-        st.markdown("")
 
         if auth_mode == "Login":
             _render_login()
@@ -114,14 +120,16 @@ def render_auth_page():
         st.markdown('<div class="auth-divider">or</div>', unsafe_allow_html=True)
 
         if st.button("👤 Continue as Guest", use_container_width=True, key="guest_btn"):
-            st.session_state["authenticated"] = True
-            st.session_state["user"]          = None
-            st.session_state["is_guest"]      = True
-            st.session_state["threads"]       = []
-            st.session_state["active_thread"] = None
-            st.session_state["result"]        = None
-            st.session_state["chat_messages"] = []
-            st.session_state["history"]       = []
+            st.session_state.update({
+                "authenticated": True,
+                "user":          None,
+                "is_guest":      True,
+                "threads":       [],
+                "active_thread": None,
+                "result":        None,
+                "chat_messages": [],
+                "history":       [],
+            })
             st.rerun()
 
         st.markdown("""
@@ -136,13 +144,11 @@ def render_auth_page():
 def _render_login():
     st.markdown("""
     <div style="font-size:1.1rem;font-weight:600;color:#ececec;
-                margin-bottom:1.25rem;letter-spacing:-0.02em;">
-        Welcome back
-    </div>
+                margin-bottom:1.25rem;letter-spacing:-0.02em;">Welcome back</div>
     """, unsafe_allow_html=True)
 
-    email    = st.text_input("Email", placeholder="you@example.com", key="login_email")
-    password = st.text_input("Password", placeholder="••••••••", type="password", key="login_password")
+    email    = st.text_input("Email",    placeholder="you@example.com", key="login_email")
+    password = st.text_input("Password", placeholder="••••••••",        type="password", key="login_password")
 
     if st.button("Sign in", use_container_width=True, type="primary", key="login_btn"):
         if not email or not password:
@@ -151,16 +157,16 @@ def _render_login():
             with st.spinner("Signing in…"):
                 result = login_user(email, password)
             if result["success"]:
-                st.session_state["authenticated"] = True
-                st.session_state["user"]          = result["user"]
-                st.session_state["is_guest"]      = False
-                st.session_state["threads"]       = result.get("threads", [])
-                st.session_state["active_thread"] = None
-                st.session_state["result"]        = None
-                st.session_state["chat_messages"] = []
-                st.session_state["history"]       = [
-                    t.get("topic", "") for t in result.get("threads", [])
-                ]
+                st.session_state.update({
+                    "authenticated": True,
+                    "user":          result["user"],
+                    "is_guest":      False,
+                    "threads":       result.get("threads", []),
+                    "active_thread": None,
+                    "result":        None,
+                    "chat_messages": [],
+                    "history":       [t.get("topic", "") for t in result.get("threads", [])],
+                })
                 st.rerun()
             else:
                 st.error(result["message"])
@@ -169,15 +175,13 @@ def _render_login():
 def _render_signup():
     st.markdown("""
     <div style="font-size:1.1rem;font-weight:600;color:#ececec;
-                margin-bottom:1.25rem;letter-spacing:-0.02em;">
-        Create account
-    </div>
+                margin-bottom:1.25rem;letter-spacing:-0.02em;">Create account</div>
     """, unsafe_allow_html=True)
 
-    full_name        = st.text_input("Full Name",        placeholder="John Doe",         key="signup_name")
-    email            = st.text_input("Email",            placeholder="you@example.com",  key="signup_email")
-    password         = st.text_input("Password",         placeholder="Min. 6 characters",type="password", key="signup_password")
-    password_confirm = st.text_input("Confirm Password", placeholder="••••••••",         type="password", key="signup_confirm")
+    full_name        = st.text_input("Full Name",        placeholder="John Doe",          key="signup_name")
+    email            = st.text_input("Email",            placeholder="you@example.com",   key="signup_email")
+    password         = st.text_input("Password",         placeholder="Min. 6 characters", type="password", key="signup_password")
+    password_confirm = st.text_input("Confirm Password", placeholder="••••••••",          type="password", key="signup_confirm")
 
     if st.button("Create account", use_container_width=True, type="primary", key="signup_btn"):
         if not email or not password or not full_name:
