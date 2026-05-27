@@ -24,48 +24,56 @@ def _group_threads(threads: list) -> dict:
 
 
 def render_sidebar() -> None:
-    """
-    Renders sidebar content into whatever container calls this function.
-    On desktop this is the left column; on mobile/tablet it's injected into
-    the fixed .rm-sidebar drawer via app.py's HTML scaffold.
-    """
 
-    # ── Brand + mobile close button ────────────────────────────────────
+    # ── Brand ─────────────────────────────────────────────────────────
     st.markdown("""
         <div class="sidebar-brand">
-            🧠 ResearchMind
-            <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close">✕</button>
+            <div class="sidebar-brand-logo">
+                <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="none" stroke="#2f6feb" stroke-width="1.5"/>
+                    <polygon points="16,7 23,11 23,21 16,25 9,21 9,11" fill="rgba(47,111,235,0.15)" stroke="#60a5fa" stroke-width="1"/>
+                    <circle cx="16" cy="16" r="3" fill="#2f6feb"/>
+                    <line x1="16" y1="7" x2="16" y2="13" stroke="#60a5fa" stroke-width="1.2"/>
+                    <line x1="16" y1="19" x2="16" y2="25" stroke="#60a5fa" stroke-width="1.2"/>
+                    <line x1="23" y1="11" x2="18.6" y2="13.5" stroke="#60a5fa" stroke-width="1.2"/>
+                    <line x1="13.4" y1="18.5" x2="9" y2="21" stroke="#60a5fa" stroke-width="1.2"/>
+                    <line x1="9" y1="11" x2="13.4" y2="13.5" stroke="#60a5fa" stroke-width="1.2"/>
+                    <line x1="18.6" y1="18.5" x2="23" y2="21" stroke="#60a5fa" stroke-width="1.2"/>
+                </svg>
+                <span style="background:linear-gradient(135deg,#93c5fd,#2f6feb);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:700;letter-spacing:-0.02em;">Nexus AI</span>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # ── User info + logout ─────────────────────────────────────────────
+    # ── User row ───────────────────────────────────────────────────────
     is_guest  = st.session_state.get("is_guest", False)
     user      = st.session_state.get("user") or {}
     user_name = "Guest" if is_guest else user.get("full_name", "User")
+    initials  = "G" if is_guest else user_name[0].upper()
 
-    u1, u2 = st.columns([3, 1], gap="small")
-    with u1:
-        st.markdown(
-            f'<div style="font-family:\'JetBrains Mono\',monospace;'
-            f'font-size:0.72rem;color:#555;padding:0.3rem 0;">👤 {user_name}</div>',
-            unsafe_allow_html=True,
-        )
-    with u2:
-        if st.button("↩", help="Logout", key="logout_btn"):
-            logout_user()
-            st.session_state["is_guest"] = False
-            st.rerun()
+    st.markdown(f"""
+        <div class="sidebar-user-row">
+            <div class="sidebar-avatar">{initials}</div>
+            <span class="sidebar-username">{user_name}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
     if is_guest:
         st.markdown(
-            '<div class="guest-banner">⚡ Guest — sign in to save history</div>',
+            '<div class="guest-banner">⚡ Guest mode — sign in to save history</div>',
             unsafe_allow_html=True,
         )
+
+    # ── Sign out ───────────────────────────────────────────────────────
+    if st.button("↩  Sign out", key="logout_btn", use_container_width=True):
+        logout_user()
+        st.session_state["is_guest"] = False
+        st.rerun()
 
     st.markdown("---")
 
     # ── New Research ───────────────────────────────────────────────────
-    if st.button("＋ New Research", use_container_width=True,
+    if st.button("＋  New Research", use_container_width=True,
                  type="primary", key="new_research_btn"):
         st.session_state.update({
             "result": None, "active_thread": None,
@@ -74,33 +82,26 @@ def render_sidebar() -> None:
         })
         st.rerun()
 
-    # ── Mode switcher ──────────────────────────────────────────────────
+    # ── Mode nav ───────────────────────────────────────────────────────
+    active_mode = st.session_state.get("active_mode", "research")
     m1, m2 = st.columns(2, gap="small")
     with m1:
-        if st.button(
-            "🔍 Research", use_container_width=True,
-            type="primary" if st.session_state.get("active_mode") == "research" else "secondary",
-            key="sidebar_research",
-        ):
+        if st.button("🔍 Research", use_container_width=True,
+                     type="primary" if active_mode == "research" else "secondary",
+                     key="sidebar_research"):
             st.session_state.active_mode = "research"
             st.rerun()
     with m2:
-        if st.button(
-            "📄 PDF", use_container_width=True,
-            type="primary" if st.session_state.get("active_mode") == "rag" else "secondary",
-            key="sidebar_rag",
-        ):
+        if st.button("📄 PDF", use_container_width=True,
+                     type="primary" if active_mode == "rag" else "secondary",
+                     key="sidebar_rag"):
             st.session_state.active_mode = "rag"
             st.rerun()
 
     st.markdown("---")
 
     # ── Model selector ─────────────────────────────────────────────────
-    st.markdown(
-        '<div style="font-size:0.68rem;font-weight:600;color:#555;'
-        'letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.4rem;">'
-        'Model</div>', unsafe_allow_html=True,
-    )
+    st.markdown('<div class="sidebar-section-label">Model</div>', unsafe_allow_html=True)
     selected_model = st.selectbox(
         label="model", options=list(MODELS.keys()),
         index=list(MODELS.keys()).index(
@@ -112,37 +113,32 @@ def render_sidebar() -> None:
     st.session_state["selected_model_id"]    = model_info["id"]
     st.session_state["selected_model_label"] = selected_model
     st.markdown(f"""
-    <div style="background:#111;border:1px solid #222;border-radius:8px;
-                padding:6px 10px;margin-top:4px;margin-bottom:4px;">
-        <span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;
-                     color:#10b981;">● {model_info['badge']}</span>
-        <span style="font-size:0.7rem;color:#555;margin-left:6px;">
-            {model_info['use_case']}</span>
-    </div>
+        <div class="model-badge">
+            <div class="model-badge-dot"></div>
+            {model_info['badge']}
+            <span style="color:var(--text3);margin-left:2px;">{model_info['use_case']}</span>
+        </div>
     """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── Agents ────────────────────────────────────────────────────────
-    st.markdown(
-        '<div style="font-size:0.68rem;font-weight:600;color:#555;'
-        'letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.5rem;">'
-        'Agents</div>', unsafe_allow_html=True,
-    )
+    # ── Agents ─────────────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-label">Agents</div>', unsafe_allow_html=True)
     for icon, name, desc in [
-        ("🔍", "Search", "Tavily web search"),
-        ("📄", "Reader", "Firecrawl scraper"),
-        ("✍️", "Writer", "Mistral LLM"),
-        ("🔬", "Critic", "Quality reviewer"),
+        ("🔍", "Search",  "Tavily web search"),
+        ("📄", "Reader",  "Firecrawl scraper"),
+        ("✍️", "Writer",  "Mistral LLM"),
+        ("🔬", "Critic",  "Quality reviewer"),
     ]:
         st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:8px;padding:4px;margin-bottom:2px;">
-            <span style="font-size:0.9rem;">{icon}</span>
-            <div>
-                <div style="font-size:0.75rem;font-weight:500;color:#888;">{name}</div>
-                <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#444;">{desc}</div>
+            <div class="agent-chip">
+                <div class="agent-dot"></div>
+                <div>
+                    <div class="agent-name">{icon} {name}</div>
+                    <div class="agent-desc">{desc}</div>
+                </div>
             </div>
-        </div>""", unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -152,38 +148,30 @@ def render_sidebar() -> None:
 
     if is_guest:
         st.markdown(
-            '<div style="font-size:0.75rem;color:#444;text-align:center;'
+            '<div style="font-size:0.78rem;color:var(--text3);text-align:center;'
             'padding:0.75rem 0;">Sign in to view history</div>',
             unsafe_allow_html=True,
         )
     elif threads:
-        st.markdown(
-            '<div style="font-size:0.68rem;font-weight:600;color:#555;'
-            'letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.4rem;">'
-            'History</div>', unsafe_allow_html=True,
-        )
+        st.markdown('<div class="sidebar-section-label">History</div>', unsafe_allow_html=True)
         groups = _group_threads(threads)
         for group_name, group_threads in groups.items():
             if not group_threads:
                 continue
             st.markdown(
-                f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.6rem;'
-                f'color:#444;letter-spacing:0.1em;text-transform:uppercase;'
-                f'padding:0.4rem 0 0.2rem;">{group_name}</div>',
+                f'<div class="thread-group-label">{group_name}</div>',
                 unsafe_allow_html=True,
             )
             for thread in group_threads:
                 tid       = thread["id"]
                 title     = thread.get("title") or thread.get("topic", "Untitled")
-                title     = title[:28] + "…" if len(title) > 28 else title
+                title     = title[:30] + "…" if len(title) > 30 else title
                 is_active = (active == tid)
                 t_col, d_col = st.columns([5, 1], gap="small")
                 with t_col:
-                    if st.button(
-                        title, key=f"thread_{tid}",
-                        use_container_width=True,
-                        type="primary" if is_active else "secondary",
-                    ):
+                    if st.button(title, key=f"thread_{tid}",
+                                 use_container_width=True,
+                                 type="primary" if is_active else "secondary"):
                         st.session_state.update({
                             "active_thread": tid,
                             "result": {
@@ -210,14 +198,13 @@ def render_sidebar() -> None:
                         st.rerun()
     else:
         st.markdown(
-            '<div style="font-size:0.75rem;color:#444;text-align:center;'
+            '<div style="font-size:0.78rem;color:var(--text3);text-align:center;'
             'padding:0.75rem 0;">No history yet</div>',
             unsafe_allow_html=True,
         )
 
-    st.markdown("---")
+    # ── Footer ─────────────────────────────────────────────────────────
     st.markdown(
-        '<div style="font-family:\'JetBrains Mono\',monospace;'
-        'font-size:0.6rem;color:#333;">v1.0 · LangGraph + Supabase</div>',
+        '<div class="sidebar-footer">v1.0 · LangGraph + Supabase</div>',
         unsafe_allow_html=True,
     )
