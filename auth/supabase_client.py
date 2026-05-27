@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# ── Load .env ────────────────────────────────────────────────────────────────────
 load_dotenv()
 
 
@@ -10,51 +9,37 @@ def init_supabase() -> Client:
     """Initialize and return Supabase client."""
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
-
     if not supabase_url or not supabase_key:
-        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
-
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
     return create_client(supabase_url, supabase_key)
 
 
 def get_google_oauth_url() -> str:
     """Generate Google OAuth URL via Supabase."""
     try:
-        supabase = init_supabase()
-
-        # Detect environment for redirect
-        import streamlit as st
-        redirect_url = os.getenv(
-            "APP_URL",
-            "http://localhost:8501"
-        )
+        supabase  = init_supabase()
+        app_url   = os.getenv("APP_URL", "http://localhost:8501")
 
         response = supabase.auth.sign_in_with_oauth({
             "provider": "google",
             "options": {
-                "redirect_to": redirect_url,
+                "redirect_to": f"{app_url}",
+                "scopes": "email profile",
             }
         })
         return response.url if hasattr(response, "url") else None
-
     except Exception as e:
-        print(f"OAuth error: {e}")
+        print(f"OAuth URL error: {e}")
         return None
 
 
-def handle_oauth_callback(access_token: str, refresh_token: str) -> dict:
-    """
-    Handle OAuth callback — set session and get user data.
-    Returns user dict or None.
-    """
+def get_user_from_code(code: str) -> dict:
+    """Exchange auth code for user session."""
     try:
         supabase = init_supabase()
-
-        # Set the session with tokens
-        session = supabase.auth.set_session(access_token, refresh_token)
-
-        if session and session.user:
-            user = session.user
+        response = supabase.auth.exchange_code_for_session({"auth_code": code})
+        if response and response.user:
+            user      = response.user
             email     = user.email
             full_name = (
                 user.user_metadata.get("full_name")
@@ -63,29 +48,32 @@ def handle_oauth_callback(access_token: str, refresh_token: str) -> dict:
             )
             user_id = str(user.id)
 
-            # Upsert user into our users table
+            # Upsert into users table
             try:
-                existing = supabase.table("users").select("id").eq(
-                    "email", email
-                ).execute()
-
+                existing = supabase.table("users").select("id").eq("email", email).execute()
                 if not existing.data:
                     supabase.table("users").insert({
                         "id":            user_id,
                         "email":         email,
                         "full_name":     full_name,
-                        "password_hash": "oauth_user",
+                        "password_hash": "oauth_google",
                     }).execute()
             except Exception:
                 pass
 
-            return {
-                "id":        user_id,
-                "email":     email,
-                "full_name": full_name,
-            }
-
+            return {"id": user_id, "email": email, "full_name": full_name}
     except Exception as e:
-        print(f"OAuth callback error: {e}")
-
+        print(f"Code exchange error: {e}")
     return None
+
+
+def get_threads_for_user(user_id: str) -> list:
+    """Load research history for a user."""
+    try:
+        supabase = init_supabase()
+        response = supabase.table("research_history").select(
+            "id, topic, title, report, search_results, feedback, created_at"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute()
+        return response.data if response.data else []
+    except Exception:
+        return []
