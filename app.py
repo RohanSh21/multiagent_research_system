@@ -116,7 +116,7 @@ with main_col:
     with c1:
         label = "◀" if sidebar_open else "▶"
         if st.button(label, key="sidebar_toggle_btn",
-                     use_container_width=True, help="Toggle sidebar"):
+                    use_container_width=True, help="Toggle sidebar"):
             st.session_state.sidebar_open = not sidebar_open
             st.rerun()
 
