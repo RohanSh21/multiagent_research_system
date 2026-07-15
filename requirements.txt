@@ -32,3 +32,6 @@ aiohttp>=3.9.0
 pandas>=2.0.0
 tiktoken>=0.6.0
 rich>=13.7.0
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
