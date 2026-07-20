@@ -1,6 +1,6 @@
-from agents import build_reader_agent,build_search_agent,writer_chain,critic_chain
+from agents import build_reader_agent, build_search_agent, write_report, critique_report
 
-def run_research_pipeline(topic: str)-> dict:
+def run_research_pipeline(topic: str, user_id: str = None, model_key: str = "balanced") -> dict:
     state={}
 
     #search agent working
@@ -25,9 +25,9 @@ def run_research_pipeline(topic: str)-> dict:
     reader_agent=build_reader_agent()
     reader_result=reader_agent.invoke({
         "messages":[("user",
-            f"based on the following search results about'{topic}',"
-            f"pick the most important url and scrape it fro deeper content.\n\n"
-            f"search_results:\nstate{['search_results'][:800]}")]
+            f"based on the following search results about '{topic}', "
+            f"pick the most important url and scrape it for deeper content.\n\n"
+            f"search_results:\n{state['search_results'][:800]}")]
     })
     state['scraped_content']=reader_result['messages'][-1].content
     print("\nscraped_content:\n",state['scraped_content'])
@@ -42,10 +42,7 @@ def run_research_pipeline(topic: str)-> dict:
     f"DETAILED SCRAPED CONTENT : \n {state['scraped_content']}"
 )
 
-    state["report"] = writer_chain.invoke({
-    "topic" : topic,
-    "research" : research_combined
-})
+    state["report"] = write_report(topic, research_combined, model_key)
 
     print("\n Final Report\n",state['report'])
     
@@ -55,13 +52,13 @@ def run_research_pipeline(topic: str)-> dict:
     print("step 4 - critic is reviewing the report ")
     print("="*50)
 
-    state["feedback"] = critic_chain.invoke({
-    "report":state['report']
-})
+    state["feedback"] = critique_report(state['report'], model_key)
 
     print("\n critic report \n", state['feedback'])
 
     return state
+
+
 if __name__=="__main__":
     topic=input("\n enter a research topic: ")
     run_research_pipeline(topic)
