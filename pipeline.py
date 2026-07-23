@@ -14,7 +14,7 @@ def run_research_pipeline(topic: str, user_id: str = None, model_key: str = "bal
         "messages":[("user",f"find recent,reliable and detailed information about :{topic}")]
     })
 
-    state["search_results"]=search_result["messages"][-1].content
+    state["search_results"] = str(search_result["messages"][-1].content)
 
     print("\nsearch_result",state['search_results'])
     
@@ -29,7 +29,7 @@ def run_research_pipeline(topic: str, user_id: str = None, model_key: str = "bal
             f"pick the most important url and scrape it for deeper content.\n\n"
             f"search_results:\n{state['search_results'][:800]}")]
     })
-    state['scraped_content']=reader_result['messages'][-1].content
+    state['scraped_content'] = str(reader_result['messages'][-1].content)
     print("\nscraped_content:\n",state['scraped_content'])
     
     #step 3 writer chain 
@@ -42,7 +42,7 @@ def run_research_pipeline(topic: str, user_id: str = None, model_key: str = "bal
     f"DETAILED SCRAPED CONTENT : \n {state['scraped_content']}"
 )
 
-    state["report"] = write_report(topic, research_combined, model_key)
+    state["report"] = str(write_report(topic, research_combined, model_key))
 
     print("\n Final Report\n",state['report'])
     
@@ -52,7 +52,7 @@ def run_research_pipeline(topic: str, user_id: str = None, model_key: str = "bal
     print("step 4 - critic is reviewing the report ")
     print("="*50)
 
-    state["feedback"] = critique_report(state['report'], model_key)
+    state["feedback"] = str(critique_report(state['report'], model_key))
 
     print("\n critic report \n", state['feedback'])
 
